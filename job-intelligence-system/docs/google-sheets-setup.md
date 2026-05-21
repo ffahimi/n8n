@@ -31,6 +31,11 @@ risks
 positioning
 next_action
 reasoning
+application_cost
+custom_job_score
+category
+skills
+budget
 ```
 
 After creating the sheet:
@@ -39,4 +44,3 @@ After creating the sheet:
 2. Open the imported n8n workflow.
 3. Replace `REPLACE_WITH_GOOGLE_SHEET_ID` in the `Append to Google Sheet` node.
 4. Connect your Google Sheets OAuth2 credential.
-

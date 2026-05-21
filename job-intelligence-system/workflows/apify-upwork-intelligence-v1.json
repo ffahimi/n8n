@@ -121,7 +121,7 @@
     },
     {
       "parameters": {
-        "content": "Apify Upwork MVP:\n1. Build a small, cost-capped actor input.\n2. Run the Upwork actor synchronously and return dataset items.\n3. Normalize Apify fields into the common opportunity object.\n4. Score with OpenAI.\n5. Inspect output, then later attach Google Sheets and Zoho.",
+        "content": "Apify Upwork MVP:\n1. Build a small, cost-capped actor input.\n2. Run the Upwork actor synchronously and return dataset items.\n3. Normalize Apify fields into the common opportunity object.\n4. Score with OpenAI.\n5. Append scored rows to Google Sheets.\nZoho is intentionally excluded until the ledger looks clean.",
         "height": 220,
         "width": 460
       },
@@ -146,6 +146,35 @@
         220,
         0
       ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Opportunities",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "append-apify-results-google-sheet",
+      "name": "Append Apify Results to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1060,
+        0
+      ],
+      "notes": "Create a sheet named Opportunities with headers matching docs/google-sheets-setup.md, then replace the sheet ID and select your Google Sheets credential."
     }
   ],
   "connections": {
@@ -209,6 +238,17 @@
         [
           {
             "node": "OpenAI Score Apify Upwork",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Apify Score": {
+      "main": [
+        [
+          {
+            "node": "Append Apify Results to Google Sheet",
             "type": "main",
             "index": 0
           }
