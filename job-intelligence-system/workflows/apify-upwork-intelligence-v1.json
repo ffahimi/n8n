@@ -92,7 +92,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"{{$env.OPENAI_SCORING_MODEL || 'gpt-5-mini'}}\",\n  \"input\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You evaluate Upwork freelance leads for Farshad, an advanced quantitative researcher and AI/ML engineer. Return strict JSON only.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Evaluate this Upwork opportunity. Favor projects involving prediction markets, Kalshi, Polymarket, sports betting, Betfair, trading automation, market microstructure, crypto trading, Python trading systems, time-series ML, reinforcement learning, low-latency systems, or financial machine learning. Penalize vague projects, low-budget clients, and projects asking for full production trading bots without controls. Return JSON with score, priority, strengths, risks, suggested_positioning, next_action, and reasoning. Opportunity: \" + JSON.stringify($json)\n    }\n  ],\n  \"text\": {\n    \"format\": {\n      \"type\": \"json_schema\",\n      \"name\": \"opportunity_score\",\n      \"schema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"score\": { \"type\": \"number\" },\n          \"priority\": { \"type\": \"string\" },\n          \"strengths\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"risks\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"suggested_positioning\": { \"type\": \"string\" },\n          \"next_action\": { \"type\": \"string\" },\n          \"reasoning\": { \"type\": \"string\" }\n        },\n        \"required\": [\"score\", \"priority\", \"strengths\", \"risks\", \"suggested_positioning\", \"next_action\", \"reasoning\"]\n      }\n    }\n  }\n}",
+        "jsonBody": "={{$json.openaiBody}}",
         "options": {
           "timeout": 60000
         }
@@ -102,20 +102,20 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        220,
+        500,
         0
       ]
     },
     {
       "parameters": {
-        "jsCode": "return items.map((item) => {\n  const original = item.pairedItem ? $items('Normalize Apify Upwork')[item.pairedItem.item].json : {};\n  const response = item.json;\n  const text = response.output_text || response.output?.[0]?.content?.[0]?.text || '{}';\n  let score = {};\n\n  try {\n    score = typeof text === 'string' ? JSON.parse(text) : text;\n  } catch (error) {\n    score = {\n      score: 0,\n      priority: 'Low',\n      strengths: [],\n      risks: ['OpenAI response could not be parsed'],\n      suggested_positioning: '',\n      next_action: 'Review manually',\n      reasoning: error.message\n    };\n  }\n\n  return {\n    json: {\n      ...original,\n      score: score.score,\n      priority: score.priority,\n      strengths: Array.isArray(score.strengths) ? score.strengths.join('\\n') : String(score.strengths || ''),\n      risks: Array.isArray(score.risks) ? score.risks.join('\\n') : String(score.risks || ''),\n      positioning: score.suggested_positioning || '',\n      next_action: score.next_action || '',\n      reasoning: score.reasoning || '',\n      stage: Number(score.score) >= 70 ? 'Evaluated' : 'Archived'\n    }\n  };\n});\n"
+        "jsCode": "return items.map((item) => {\n  const original = item.pairedItem ? $items('Build OpenAI Apify Request')[item.pairedItem.item].json.opportunity : {};\n  const response = item.json;\n  const text = response.output_text || response.output?.[0]?.content?.[0]?.text || '{}';\n  let score = {};\n\n  try {\n    score = typeof text === 'string' ? JSON.parse(text) : text;\n  } catch (error) {\n    score = {\n      score: 0,\n      priority: 'Low',\n      strengths: [],\n      risks: ['OpenAI response could not be parsed'],\n      suggested_positioning: '',\n      next_action: 'Review manually',\n      reasoning: error.message\n    };\n  }\n\n  return {\n    json: {\n      ...original,\n      score: score.score,\n      priority: score.priority,\n      strengths: Array.isArray(score.strengths) ? score.strengths.join('\\n') : String(score.strengths || ''),\n      risks: Array.isArray(score.risks) ? score.risks.join('\\n') : String(score.risks || ''),\n      positioning: score.suggested_positioning || '',\n      next_action: score.next_action || '',\n      reasoning: score.reasoning || '',\n      stage: Number(score.score) >= 70 ? 'Evaluated' : 'Archived'\n    }\n  };\n});\n"
       },
       "id": "merge-apify-score",
       "name": "Merge Apify Score",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        500,
+        780,
         0
       ]
     },
@@ -132,6 +132,19 @@
       "position": [
         -900,
         -320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map((item) => ({\n  json: {\n    opportunity: item.json,\n    openaiBody: {\n      model: $env.OPENAI_SCORING_MODEL || 'gpt-5-mini',\n      input: [\n        {\n          role: 'system',\n          content: 'You evaluate Upwork freelance leads for Farshad, an advanced quantitative researcher and AI/ML engineer. Return strict JSON only.'\n        },\n        {\n          role: 'user',\n          content: 'Evaluate this Upwork opportunity. Favor projects involving prediction markets, Kalshi, Polymarket, sports betting, Betfair, trading automation, market microstructure, crypto trading, Python trading systems, time-series ML, reinforcement learning, low-latency systems, or financial machine learning. Penalize vague projects, low-budget clients, and projects asking for full production trading bots without controls. Return JSON with score, priority, strengths, risks, suggested_positioning, next_action, and reasoning. Opportunity: ' + JSON.stringify(item.json)\n        }\n      ],\n      text: {\n        format: {\n          type: 'json_schema',\n          name: 'opportunity_score',\n          schema: {\n            type: 'object',\n            additionalProperties: false,\n            properties: {\n              score: { type: 'number' },\n              priority: { type: 'string' },\n              strengths: { type: 'array', items: { type: 'string' } },\n              risks: { type: 'array', items: { type: 'string' } },\n              suggested_positioning: { type: 'string' },\n              next_action: { type: 'string' },\n              reasoning: { type: 'string' }\n            },\n            required: ['score', 'priority', 'strengths', 'risks', 'suggested_positioning', 'next_action', 'reasoning']\n          }\n        }\n      }\n    }\n  }\n}));\n"
+      },
+      "id": "build-openai-apify-request",
+      "name": "Build OpenAI Apify Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
       ]
     }
   ],
@@ -173,7 +186,7 @@
       "main": [
         [
           {
-            "node": "OpenAI Score Apify Upwork",
+            "node": "Build OpenAI Apify Request",
             "type": "main",
             "index": 0
           }
@@ -185,6 +198,17 @@
         [
           {
             "node": "Merge Apify Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OpenAI Apify Request": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Score Apify Upwork",
             "type": "main",
             "index": 0
           }
