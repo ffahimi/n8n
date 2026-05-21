@@ -108,7 +108,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return items.map((item) => {\n  const original = item.pairedItem ? $items('Build OpenAI Apify Request')[item.pairedItem.item].json.opportunity : {};\n  const response = item.json;\n  const text = response.output_text || response.output?.[0]?.content?.[0]?.text || '{}';\n  let score = {};\n\n  try {\n    score = typeof text === 'string' ? JSON.parse(text) : text;\n  } catch (error) {\n    score = {\n      score: 0,\n      priority: 'Low',\n      strengths: [],\n      risks: ['OpenAI response could not be parsed'],\n      suggested_positioning: '',\n      next_action: 'Review manually',\n      reasoning: error.message\n    };\n  }\n\n  return {\n    json: {\n      ...original,\n      score: score.score,\n      priority: score.priority,\n      strengths: Array.isArray(score.strengths) ? score.strengths.join('\\n') : String(score.strengths || ''),\n      risks: Array.isArray(score.risks) ? score.risks.join('\\n') : String(score.risks || ''),\n      positioning: score.suggested_positioning || '',\n      next_action: score.next_action || '',\n      reasoning: score.reasoning || '',\n      stage: Number(score.score) >= 70 ? 'Evaluated' : 'Archived'\n    }\n  };\n});\n"
+        "jsCode": "function findText(value) {\n  if (typeof value === 'string') return value;\n  if (Array.isArray(value)) {\n    for (const entry of value) {\n      const found = findText(entry);\n      if (found) return found;\n    }\n    return '';\n  }\n  if (value && typeof value === 'object') {\n    if (typeof value.output_text === 'string') return value.output_text;\n    if (typeof value.text === 'string') return value.text;\n    if (typeof value.content === 'string') return value.content;\n    for (const key of ['output', 'content', 'message']) {\n      const found = findText(value[key]);\n      if (found) return found;\n    }\n  }\n  return '';\n}\n\nreturn items.map((item) => {\n  const original = item.pairedItem ? $items('Build OpenAI Apify Request')[item.pairedItem.item].json.opportunity : {};\n  const response = item.json;\n  const text = findText(response) || '{}';\n  let score = {};\n\n  try {\n    score = typeof text === 'string' ? JSON.parse(text) : text;\n  } catch (error) {\n    score = {\n      score: 0,\n      priority: 'Low',\n      strengths: [],\n      risks: ['OpenAI response could not be parsed'],\n      suggested_positioning: '',\n      next_action: 'Review manually',\n      reasoning: error.message\n    };\n  }\n\n  return {\n    json: {\n      ...original,\n      score: score.score ?? 0,\n      priority: score.priority || 'Low',\n      strengths: Array.isArray(score.strengths) ? score.strengths.join('\\\\n') : String(score.strengths || ''),\n      risks: Array.isArray(score.risks) ? score.risks.join('\\\\n') : String(score.risks || ''),\n      positioning: score.suggested_positioning || '',\n      next_action: score.next_action || '',\n      reasoning: score.reasoning || '',\n      stage: Number(score.score) >= 70 ? 'Evaluated' : 'Archived'\n    }\n  };\n});\n"
       },
       "id": "merge-apify-score",
       "name": "Merge Apify Score",
@@ -121,7 +121,7 @@
     },
     {
       "parameters": {
-        "content": "Apify Upwork MVP:\n1. Build a small, cost-capped actor input.\n2. Run the Upwork actor synchronously and return dataset items.\n3. Normalize Apify fields into the common opportunity object.\n4. Score with OpenAI.\n5. Append scored rows to Google Sheets.\nZoho is intentionally excluded until the ledger looks clean.",
+        "content": "Apify Upwork MVP:\n1. Build a small, cost-capped actor input.\n2. Run the Upwork actor synchronously and return dataset items.\n3. Normalize Apify fields into the common opportunity object.\n4. Score with OpenAI.\n5. Append scored rows to Google Sheets.\n6. Create Zoho Deals for all leads, without a score filter for now.",
         "height": 220,
         "width": 460
       },
@@ -175,6 +175,27 @@
         0
       ],
       "notes": "Create a sheet named Opportunities with headers matching docs/google-sheets-setup.md, then replace the sheet ID and select your Google Sheets credential."
+    },
+    {
+      "parameters": {
+        "resource": "deal",
+        "operation": "create",
+        "dealName": "={{$json.title + ' - Upwork'}}",
+        "stage": "={{$json.score >= 80 ? 'High Priority' : $json.score >= 70 ? 'Evaluated' : 'Discovered'}}",
+        "accountName": "={{$json.company_name || 'Upwork Client'}}",
+        "additionalFields": {
+          "description": "={{'Score: ' + $json.score + '\nPriority: ' + $json.priority + '\n\nSource: ' + $json.source_url + '\n\nPositioning:\n' + $json.positioning + '\n\nStrengths:\n' + $json.strengths + '\n\nRisks:\n' + $json.risks + '\n\nNext action:\n' + $json.next_action + '\n\nReasoning:\n' + $json.reasoning}}"
+        }
+      },
+      "id": "create-zoho-deal-apify-upwork",
+      "name": "Create Zoho Deal",
+      "type": "n8n-nodes-base.zohoCrm",
+      "typeVersion": 1,
+      "position": [
+        1060,
+        220
+      ],
+      "notes": "Connect your Zoho CRM credential. This creates a Deal for every Apify Upwork lead; no score filter is applied yet."
     }
   ],
   "connections": {
@@ -249,6 +270,11 @@
         [
           {
             "node": "Append Apify Results to Google Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Zoho Deal",
             "type": "main",
             "index": 0
           }
