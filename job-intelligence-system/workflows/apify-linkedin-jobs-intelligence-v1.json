@@ -14,7 +14,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const keywords = [\n  'Quantitative Developer',\n  'Quant Developer',\n  'Algorithmic Trading Engineer',\n  'Trading Systems Engineer',\n  'Systematic Trader Developer',\n  'Options Quant',\n  'Derivatives Quant',\n  'Volatility Quant',\n  'Index Options Trader Quant',\n  'Execution Engineer Trading',\n  'Market Microstructure Researcher',\n  'Market Making Engineer'\n];\n\nreturn keywords.map((keyword) => ({\n  json: {\n    keyword,\n    actorInput: {\n      keywords: keyword,\n      location: $env.LINKEDIN_JOB_LOCATION || 'Berlin, Germany',\n      maxJobs: Number($env.LINKEDIN_MAX_JOBS_PER_KEYWORD || 5)\n    }\n  }\n}));\n"
+        "jsCode": "const keywords = [\n  'Quantitative Developer',\n  'Quant Developer',\n  'Algorithmic Trading Engineer',\n  'Trading Systems Engineer',\n  'Systematic Trader Developer',\n  'Options Quant',\n  'Derivatives Quant',\n  'Volatility Quant',\n  'Index Options Trader Quant',\n  'Execution Engineer Trading',\n  'Market Microstructure Researcher',\n  'Market Making Engineer'\n];\n\nconst location = $env.LINKEDIN_JOB_LOCATION || 'Berlin, Germany';\nconst publishedAt = $env.LINKEDIN_PUBLISHED_AT || 'r604800';\nconst geoId = $env.LINKEDIN_GEO_ID || '';\nconst maxKeywords = Number($env.LINKEDIN_MAX_KEYWORDS_PER_RUN || keywords.length);\nconst selectedKeywords = keywords.slice(0, maxKeywords);\n\nfunction searchUrl(keyword) {\n  const params = new URLSearchParams({\n    f_TPR: publishedAt,\n    keywords: keyword\n  });\n  if (geoId) params.set('geoId', geoId);\n  return 'https://www.linkedin.com/jobs/search/?' + params.toString();\n}\n\nreturn [\n  {\n    json: {\n      actorInput: {\n        enrichCompanyData: false,\n        keyword: selectedKeywords,\n        location,\n        publishedAt,\n        resumeKeywords: [\n          { keyword: 'Python' },\n          { keyword: 'C++' },\n          { keyword: 'Quantitative Research', aliases: ['Quant Research'] },\n          { keyword: 'Algorithmic Trading', aliases: ['Algo Trading'] },\n          { keyword: 'Options', aliases: ['Derivatives', 'Volatility'] },\n          { keyword: 'Market Microstructure' },\n          { keyword: 'Low Latency', aliases: ['Low-Latency'] },\n          { keyword: 'Market Making' },\n          { keyword: 'Execution' }\n        ],\n        saveOnlyUniqueItems: true,\n        startUrls: selectedKeywords.map((keyword) => ({ url: searchUrl(keyword) }))\n      }\n    }\n  }\n];\n"
       },
       "id": "build-linkedin-apify-inputs",
       "name": "Build LinkedIn Apify Inputs",
@@ -24,12 +24,12 @@
         -700,
         0
       ],
-      "notes": "One small actor run per keyword. Keep LINKEDIN_MAX_JOBS_PER_KEYWORD low while testing cost and result quality."
+      "notes": "Input schema for cheap_scraper/linkedin-job-scraper. Set LINKEDIN_MAX_KEYWORDS_PER_RUN low while testing cost."
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.apify.com/v2/acts/{{$env.APIFY_LINKEDIN_ACTOR_ID || 'scrapeengine~linkedin-jobs-scraper'}}/run-sync-get-dataset-items",
+        "url": "=https://api.apify.com/v2/acts/{{$env.APIFY_LINKEDIN_ACTOR_ID || 'cheap_scraper~linkedin-job-scraper'}}/run-sync-get-dataset-items",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -58,7 +58,7 @@
         -420,
         0
       ],
-      "notes": "Uses Apify synchronous run endpoint and returns dataset items directly."
+      "notes": "Uses cheap_scraper/linkedin-job-scraper by default and returns dataset items directly."
     },
     {
       "parameters": {

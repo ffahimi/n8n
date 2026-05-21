@@ -62,9 +62,11 @@ This is best for small tests because n8n receives dataset items directly. For la
 ```text
 APIFY_TOKEN=
 APIFY_UPWORK_ACTOR_ID=upwork-vibe~upwork-job-scraper
-APIFY_LINKEDIN_ACTOR_ID=scrapeengine~linkedin-jobs-scraper
+APIFY_LINKEDIN_ACTOR_ID=cheap_scraper~linkedin-job-scraper
 LINKEDIN_JOB_LOCATION=Berlin, Germany
-LINKEDIN_MAX_JOBS_PER_KEYWORD=5
+LINKEDIN_PUBLISHED_AT=r604800
+LINKEDIN_GEO_ID=
+LINKEDIN_MAX_KEYWORDS_PER_RUN=3
 ```
 
 ## Compliance Rule
