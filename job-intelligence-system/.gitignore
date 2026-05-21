@@ -1,0 +1,10 @@
+.env
+.DS_Store
+docker/.env
+exports/*
+logs/*
+reports/*
+!exports/.gitkeep
+!logs/.gitkeep
+!reports/.gitkeep
+

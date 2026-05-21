@@ -1,0 +1,462 @@
+{
+  "name": "Berlin Opportunity Intelligence v1",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Test Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "daily-schedule",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -900,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.arbeitnow.com/api/job-board-api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "search-arbeitnow",
+      "name": "Search Arbeitnow Germany/EU",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -620,
+        -20
+      ],
+      "notes": "Berlin/Germany-first public job API. No API key required. Useful for English-speaking Germany and Europe jobs."
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $env.UPWORK_POLL_URLS || '';\nconst urls = raw\n  .split(/[\\n,]+/)\n  .map((url) => url.trim())\n  .filter(Boolean);\n\nreturn urls.map((pollUrl) => ({\n  json: {\n    poll_url: pollUrl,\n    source: 'Upwork URL Poll'\n  }\n}));\n"
+      },
+      "id": "build-upwork-poll-urls",
+      "name": "Build Upwork Poll URLs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        260
+      ],
+      "notes": "Set UPWORK_POLL_URLS in docker/.env. Use saved Upwork search URLs or an allowed intermediary search/alert URL. For robust extraction, replace this branch with Apify later."
+    },
+    {
+      "parameters": {
+        "url": "={{$json.poll_url}}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-upwork-poll-url",
+      "name": "Fetch Upwork Poll URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -340,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nconst keywords = [\n  'quant',\n  'quantitative',\n  'trading',\n  'algorithmic',\n  'machine learning',\n  'ml engineer',\n  'ai engineer',\n  'reinforcement learning',\n  'low latency',\n  'crypto',\n  'market microstructure',\n  'python',\n  'options',\n  'hft',\n  'infrastructure',\n  'time series',\n  'financial'\n];\n\nconst preferredLocations = [\n  'berlin',\n  'germany',\n  'deutschland',\n  'remote',\n  'europe',\n  'amsterdam',\n  'london',\n  'switzerland',\n  'zurich',\n  'dubai',\n  'singapore'\n];\n\nconst source = items[0]?.json || {};\nconst jobs = Array.isArray(source.data) ? source.data : Array.isArray(source.jobs) ? source.jobs : Array.isArray(source) ? source : [];\nconst rows = [];\n\nfor (const job of jobs) {\n  const title = job.title || '';\n  const companyName = job.company_name || job.company || '';\n  const location = job.location || '';\n  const tags = Array.isArray(job.tags) ? job.tags.join(' ') : '';\n  const description = job.description || job.text || '';\n  const haystack = `${title} ${companyName} ${location} ${tags} ${description}`.toLowerCase();\n  const locationText = `${location} ${job.remote ? 'remote' : ''}`.toLowerCase();\n\n  const matchesKeyword = keywords.some((keyword) => haystack.includes(keyword));\n  const matchesLocation = preferredLocations.some((place) => locationText.includes(place)) || Boolean(job.remote);\n\n  if (!matchesKeyword || !matchesLocation) continue;\n\n  const sourceUrl = job.url || job.slug || '';\n  const key = job.slug || sourceUrl || `${companyName}|${title}|${location}`.toLowerCase();\n  const externalId = crypto.createHash('sha256').update(key).digest('hex');\n\n  rows.push({\n    json: {\n      external_id: externalId,\n      source: 'Arbeitnow',\n      source_url: sourceUrl,\n      title,\n      company_name: companyName,\n      location,\n      region: location.toLowerCase().includes('berlin') ? 'Berlin' : location.toLowerCase().includes('germany') ? 'Germany' : job.remote ? 'Remote Europe' : 'Europe',\n      description,\n      employment_type: job.job_types || '',\n      salary_min: null,\n      salary_max: null,\n      currency: '',\n      posted_at: job.created_at || job.date || null,\n      discovered_at: new Date().toISOString(),\n      stage: 'Discovered',\n      raw_payload: job\n    }\n  });\n}\n\nconst seen = new Set();\nreturn rows.filter((row) => {\n  if (seen.has(row.json.external_id)) return false;\n  seen.add(row.json.external_id);\n  return true;\n});\n"
+      },
+      "id": "normalize-filter",
+      "name": "Normalize + Filter Berlin/EU",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -340,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nconst keywords = [\n  'quant trading',\n  'sports betting',\n  'betfair',\n  'trading bot',\n  'algorithmic trading',\n  'prediction market',\n  'crypto trading',\n  'machine learning finance',\n  'market making',\n  'python trading',\n  'options trading',\n  'reinforcement learning',\n  'time series'\n];\n\nfunction decodeHtml(text) {\n  return String(text || '')\n    .replace(/&amp;/g, '&')\n    .replace(/&quot;/g, '\"')\n    .replace(/&#39;/g, \"'\")\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>');\n}\n\nfunction stripTags(text) {\n  return decodeHtml(String(text || '').replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim());\n}\n\nconst rows = [];\n\nfor (const item of items) {\n  const sourceItem = item.pairedItem ? $items('Build Upwork Poll URLs')[item.pairedItem.item]?.json : {};\n  const pollUrl = sourceItem?.poll_url || '';\n  const payload = item.json?.data || item.json?.body || item.json?.html || JSON.stringify(item.json || {});\n  const html = String(payload || '');\n  const linkMatches = [...html.matchAll(/href=[\"']([^\"']*(?:\\/jobs\\/|~[0-9a-zA-Z]+)[^\"']*)[\"']/g)].slice(0, 25);\n\n  for (const match of linkMatches) {\n    const rawUrl = decodeHtml(match[1]);\n    const sourceUrl = rawUrl.startsWith('http') ? rawUrl : new URL(rawUrl, pollUrl).toString();\n    const nearbyStart = Math.max(0, match.index - 500);\n    const nearbyEnd = Math.min(html.length, match.index + 500);\n    const nearby = html.slice(nearbyStart, nearbyEnd);\n    const titleMatch = nearby.match(/<h[1-4][^>]*>(.*?)<\\/h[1-4]>/i) || nearby.match(/title=[\"']([^\"']+)[\"']/i) || nearby.match(/aria-label=[\"']([^\"']+)[\"']/i);\n    const title = stripTags(titleMatch?.[1] || 'Upwork freelance lead');\n    const description = stripTags(nearby).slice(0, 1500);\n    const haystack = (title + ' ' + description).toLowerCase();\n    const matchesKeyword = keywords.some((keyword) => haystack.includes(keyword));\n\n    if (!matchesKeyword) continue;\n\n    const externalId = crypto.createHash('sha256').update(sourceUrl).digest('hex');\n\n    rows.push({\n      json: {\n        external_id: externalId,\n        source: 'Upwork URL Poll',\n        source_url: sourceUrl,\n        title,\n        company_name: 'Upwork Client',\n        location: 'Remote freelance',\n        region: 'Remote freelance',\n        description,\n        employment_type: 'Freelance',\n        salary_min: null,\n        salary_max: null,\n        currency: '',\n        posted_at: null,\n        discovered_at: new Date().toISOString(),\n        stage: 'Discovered',\n        raw_payload: { poll_url: pollUrl, source_url: sourceUrl, title, description }\n      }\n    });\n  }\n}\n\nconst seen = new Set();\nreturn rows.filter((row) => {\n  if (seen.has(row.json.external_id)) return false;\n  seen.add(row.json.external_id);\n  return true;\n});\n"
+      },
+      "id": "normalize-upwork-poll",
+      "name": "Normalize Upwork Poll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{$env.OPENAI_SCORING_MODEL || 'gpt-5-mini'}}\",\n  \"input\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You evaluate Berlin, Germany, Europe, and remote job opportunities for Farshad, an advanced quantitative researcher and AI/ML engineer. Return strict JSON only.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Evaluate this opportunity for skill overlap, strategic fit, compensation likelihood, career leverage, and interview probability. Favor Berlin/Germany/EU roles and remote roles that fit quant trading, AI infrastructure, market microstructure, options, prediction markets, low-latency systems, or financial engineering. Return JSON with score, priority, strengths, risks, suggested_positioning, next_action, and reasoning. Opportunity: \" + JSON.stringify($json)\n    }\n  ],\n  \"text\": {\n    \"format\": {\n      \"type\": \"json_schema\",\n      \"name\": \"opportunity_score\",\n      \"schema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"score\": { \"type\": \"number\" },\n          \"priority\": { \"type\": \"string\" },\n          \"strengths\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"risks\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"suggested_positioning\": { \"type\": \"string\" },\n          \"next_action\": { \"type\": \"string\" },\n          \"reasoning\": { \"type\": \"string\" }\n        },\n        \"required\": [\"score\", \"priority\", \"strengths\", \"risks\", \"suggested_positioning\", \"next_action\", \"reasoning\"]\n      }\n    }\n  }\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "openai-score",
+      "name": "OpenAI Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{$env.OPENAI_SCORING_MODEL || 'gpt-5-mini'}}\",\n  \"input\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You evaluate freelance leads for Farshad, an advanced quantitative researcher and AI/ML engineer. Return strict JSON only.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Evaluate this Upwork freelance opportunity. Favor projects involving quant trading, sports betting models, Betfair automation, prediction markets, crypto trading bots, Python trading systems, time-series ML, reinforcement learning, or financial machine learning. Return JSON with score, priority, strengths, risks, suggested_positioning, next_action, and reasoning. Opportunity: \" + JSON.stringify($json)\n    }\n  ],\n  \"text\": {\n    \"format\": {\n      \"type\": \"json_schema\",\n      \"name\": \"opportunity_score\",\n      \"schema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"score\": { \"type\": \"number\" },\n          \"priority\": { \"type\": \"string\" },\n          \"strengths\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"risks\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"suggested_positioning\": { \"type\": \"string\" },\n          \"next_action\": { \"type\": \"string\" },\n          \"reasoning\": { \"type\": \"string\" }\n        },\n        \"required\": [\"score\", \"priority\", \"strengths\", \"risks\", \"suggested_positioning\", \"next_action\", \"reasoning\"]\n      }\n    }\n  }\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "openai-score-upwork",
+      "name": "OpenAI Score Upwork",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map((item) => {\n  const original = item.pairedItem ? $items('Normalize + Filter Berlin/EU')[item.pairedItem.item].json : {};\n  const response = item.json;\n  const text = response.output_text || response.output?.[0]?.content?.[0]?.text || '{}';\n  let score = {};\n\n  try {\n    score = typeof text === 'string' ? JSON.parse(text) : text;\n  } catch (error) {\n    score = {\n      score: 0,\n      priority: 'Low',\n      strengths: [],\n      risks: ['OpenAI response could not be parsed'],\n      suggested_positioning: '',\n      next_action: 'Review manually',\n      reasoning: error.message\n    };\n  }\n\n  return {\n    json: {\n      ...original,\n      score: score.score,\n      priority: score.priority,\n      strengths: Array.isArray(score.strengths) ? score.strengths.join('\\n') : String(score.strengths || ''),\n      risks: Array.isArray(score.risks) ? score.risks.join('\\n') : String(score.risks || ''),\n      positioning: score.suggested_positioning || '',\n      next_action: score.next_action || '',\n      reasoning: score.reasoning || '',\n      stage: Number(score.score) >= 70 ? 'Evaluated' : 'Archived'\n    }\n  };\n});\n"
+      },
+      "id": "merge-score",
+      "name": "Merge Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map((item) => {\n  const original = item.pairedItem ? $items('Normalize Upwork Poll')[item.pairedItem.item].json : {};\n  const response = item.json;\n  const text = response.output_text || response.output?.[0]?.content?.[0]?.text || '{}';\n  let score = {};\n\n  try {\n    score = typeof text === 'string' ? JSON.parse(text) : text;\n  } catch (error) {\n    score = {\n      score: 0,\n      priority: 'Low',\n      strengths: [],\n      risks: ['OpenAI response could not be parsed'],\n      suggested_positioning: '',\n      next_action: 'Review manually',\n      reasoning: error.message\n    };\n  }\n\n  return {\n    json: {\n      ...original,\n      score: score.score,\n      priority: score.priority,\n      strengths: Array.isArray(score.strengths) ? score.strengths.join('\\n') : String(score.strengths || ''),\n      risks: Array.isArray(score.risks) ? score.risks.join('\\n') : String(score.risks || ''),\n      positioning: score.suggested_positioning || '',\n      next_action: score.next_action || '',\n      reasoning: score.reasoning || '',\n      stage: Number(score.score) >= 70 ? 'Evaluated' : 'Archived'\n    }\n  };\n});\n"
+      },
+      "id": "merge-score-upwork",
+      "name": "Merge Score Upwork",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Opportunities",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "append-google-sheet",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        500,
+        -120
+      ],
+      "notes": "Create a sheet named Opportunities with headers matching docs/google-sheets-setup.md, then replace the sheet ID."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "high-score",
+              "leftValue": "={{$json.score}}",
+              "rightValue": 70,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "score-filter",
+      "name": "Score >= 70?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "deal",
+        "operation": "create",
+        "dealName": "={{$json.title + ' - ' + $json.company_name}}",
+        "stage": "={{$json.score >= 80 ? 'High Priority' : 'Evaluated'}}",
+        "accountName": "={{$json.company_name}}",
+        "additionalFields": {
+          "description": "={{'Score: ' + $json.score + '\\n\\nSource: ' + $json.source_url + '\\n\\nPositioning:\\n' + $json.positioning + '\\n\\nRisks:\\n' + $json.risks}}"
+        }
+      },
+      "id": "create-zoho-deal",
+      "name": "Create Zoho Deal",
+      "type": "n8n-nodes-base.zohoCrm",
+      "typeVersion": 1,
+      "position": [
+        780,
+        100
+      ],
+      "notes": "After importing, connect a Zoho CRM credential and map custom fields from docs/zoho-crm-setup.md."
+    },
+    {
+      "parameters": {
+        "content": "Berlin-first MVP flow:\n1. Pull recent Germany/EU jobs from Arbeitnow.\n2. Poll configured Upwork search URLs for freelance lead links.\n3. Normalize and dedupe per source.\n4. Score with OpenAI.\n5. Append all results to Google Sheets.\n6. Push score >= 70 to Zoho CRM.",
+        "height": 260,
+        "width": 460
+      },
+      "id": "sticky-note",
+      "name": "Workflow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        -430
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Test Trigger": {
+      "main": [
+        [
+          {
+            "node": "Search Arbeitnow Germany/EU",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Upwork Poll URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Search Arbeitnow Germany/EU",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Upwork Poll URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Arbeitnow Germany/EU": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Filter Berlin/EU",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Filter Berlin/EU": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Score": {
+      "main": [
+        [
+          {
+            "node": "Merge Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Score Upwork": {
+      "main": [
+        [
+          {
+            "node": "Merge Score Upwork",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Score": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Score >= 70?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Score Upwork": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Score >= 70?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score >= 70?": {
+      "main": [
+        [
+          {
+            "node": "Create Zoho Deal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Build Upwork Poll URLs": {
+      "main": [
+        [
+          {
+            "node": "Fetch Upwork Poll URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Upwork Poll URL": {
+      "main": [
+        [
+          {
+            "node": "Normalize Upwork Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Upwork Poll": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Score Upwork",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 2,
+  "updatedAt": "2026-05-21T00:00:00.000Z",
+  "versionId": "1"
+}
