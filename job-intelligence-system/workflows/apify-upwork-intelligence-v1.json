@@ -180,14 +180,14 @@
       "parameters": {
         "resource": "deal",
         "operation": "create",
-        "dealName": "={{$json.title + ' - Upwork'}}",
-        "stage": "Qualification",
-        "accountName": "={{$json.company_name || 'Upwork Client'}}",
+        "dealName": "={{$json.zoho_deal_name}}",
+        "stage": "={{$json.zoho_stage}}",
+        "accountName": "={{$json.zoho_account_name}}",
         "additionalFields": {
-          "Description": "={{'AI Score: ' + ($json.score || 0) + '\nPriority: ' + ($json.priority || '') + '\nSource: Apify Upwork' + '\nURL: ' + ($json.source_url || '') + '\nPosted at: ' + ($json.posted_at || '') + '\nDiscovered at: ' + ($json.discovered_at || '') + '\nApplication cost/connects: ' + ($json.application_cost || '') + '\nBudget: ' + ($json.budget || '') + '\n\nTitle:\n' + ($json.title || '') + '\n\nDescription:\n' + ($json.description || '') + '\n\nPositioning:\n' + ($json.positioning || '') + '\n\nStrengths:\n' + ($json.strengths || '') + '\n\nRisks:\n' + ($json.risks || '') + '\n\nNext action:\n' + ($json.next_action || '') + '\n\nReasoning:\n' + ($json.reasoning || '')}}",
-          "Closing_Date": "={{new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}}",
-          "Next_Step": "={{String($json.next_action || 'Review opportunity').slice(0, 255)}}",
-          "Probability": "={{Math.max(1, Math.min(99, Number($json.score || 0)))}}"
+          "Description": "={{$json.zoho_description}}",
+          "Closing_Date": "={{$json.zoho_closing_date}}",
+          "Next_Step": "={{$json.zoho_next_step}}",
+          "Probability": "={{$json.zoho_probability}}"
         }
       },
       "id": "create-zoho-deal-apify-upwork",
@@ -195,10 +195,23 @@
       "type": "n8n-nodes-base.zohoCrm",
       "typeVersion": 1,
       "position": [
-        1060,
+        1340,
         220
       ],
       "notes": "Connect your Zoho CRM credential. This creates a Deal for every Apify Upwork lead; no score filter is applied yet."
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map((item) => {\n  const lead = item.json;\n  const closeDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);\n  const nextStep = String(lead.next_action || 'Review opportunity').slice(0, 255);\n  const probability = Math.max(1, Math.min(99, Number(lead.score || 0)));\n  const source = 'Apify Upwork';\n  const description = [\n    'AI Score: ' + (lead.score || 0),\n    'Priority: ' + (lead.priority || ''),\n    'Source: ' + source,\n    'URL: ' + (lead.source_url || ''),\n    'Posted at: ' + (lead.posted_at || ''),\n    'Discovered at: ' + (lead.discovered_at || ''),\n    lead.application_cost ? 'Application cost/connects: ' + lead.application_cost : '',\n    lead.budget ? 'Budget: ' + lead.budget : '',\n    lead.matched_keyword ? 'Matched keyword: ' + lead.matched_keyword : '',\n    '',\n    'Title:',\n    lead.title || '',\n    '',\n    'Company:',\n    lead.company_name || '',\n    '',\n    'Location:',\n    lead.location || '',\n    '',\n    'Description:',\n    lead.description || '',\n    '',\n    'Positioning:',\n    lead.positioning || '',\n    '',\n    'Strengths:',\n    lead.strengths || '',\n    '',\n    'Risks:',\n    lead.risks || '',\n    '',\n    'Next action:',\n    lead.next_action || '',\n    '',\n    'Reasoning:',\n    lead.reasoning || ''\n  ].filter((line) => line !== null && line !== undefined).join('\\n');\n\n  return {\n    json: {\n      ...lead,\n      zoho_deal_name: lead.title ? lead.title + ' - ' + source.replace('Apify ', '') : source + ' Deal',\n      zoho_account_name: lead.company_name || (source.includes('Upwork') ? 'Upwork Client' : 'LinkedIn Company'),\n      zoho_stage: 'Qualification',\n      zoho_description: description,\n      zoho_closing_date: closeDate,\n      zoho_next_step: nextStep,\n      zoho_probability: probability\n    }\n  };\n});\n"
+      },
+      "id": "build-zoho-upwork-deal-fields",
+      "name": "Build Zoho Upwork Deal Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        220
+      ]
     }
   ],
   "connections": {
@@ -276,6 +289,17 @@
             "type": "main",
             "index": 0
           },
+          {
+            "node": "Build Zoho Upwork Deal Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Zoho Upwork Deal Fields": {
+      "main": [
+        [
           {
             "node": "Create Zoho Deal",
             "type": "main",
