@@ -1,0 +1,294 @@
+{
+  "name": "Apify LinkedIn Jobs Intelligence v1",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Test Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -980,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const keywords = [\n  'Quantitative Developer',\n  'Quant Developer',\n  'Algorithmic Trading Engineer',\n  'Trading Systems Engineer',\n  'Systematic Trader Developer',\n  'Options Quant',\n  'Derivatives Quant',\n  'Volatility Quant',\n  'Index Options Trader Quant',\n  'Execution Engineer Trading',\n  'Market Microstructure Researcher',\n  'Market Making Engineer'\n];\n\nreturn keywords.map((keyword) => ({\n  json: {\n    keyword,\n    actorInput: {\n      keywords: keyword,\n      location: $env.LINKEDIN_JOB_LOCATION || 'Berlin, Germany',\n      maxJobs: Number($env.LINKEDIN_MAX_JOBS_PER_KEYWORD || 5)\n    }\n  }\n}));\n"
+      },
+      "id": "build-linkedin-apify-inputs",
+      "name": "Build LinkedIn Apify Inputs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        0
+      ],
+      "notes": "One small actor run per keyword. Keep LINKEDIN_MAX_JOBS_PER_KEYWORD low while testing cost and result quality."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/{{$env.APIFY_LINKEDIN_ACTOR_ID || 'scrapeengine~linkedin-jobs-scraper'}}/run-sync-get-dataset-items",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "={{$env.APIFY_TOKEN}}"
+            },
+            {
+              "name": "timeout",
+              "value": "300"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.actorInput}}",
+        "options": {
+          "timeout": 360000
+        }
+      },
+      "id": "run-apify-linkedin-actor",
+      "name": "Run Apify LinkedIn Actor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -420,
+        0
+      ],
+      "notes": "Uses Apify synchronous run endpoint and returns dataset items directly."
+    },
+    {
+      "parameters": {
+        "jsCode": "function stableId(value) {\n  const text = String(value || '');\n  let hash = 0;\n  for (let index = 0; index < text.length; index += 1) {\n    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;\n  }\n  return 'id_' + Math.abs(hash).toString(36) + '_' + text.length.toString(36);\n}\n\nfunction asText(value) {\n  if (value == null) return '';\n  if (Array.isArray(value)) return value.map(asText).filter(Boolean).join(', ');\n  if (typeof value === 'object') return JSON.stringify(value);\n  return String(value);\n}\n\nfunction pick(job, keys) {\n  for (const key of keys) {\n    if (job[key] != null && job[key] !== '') return job[key];\n  }\n  return '';\n}\n\nconst rows = [];\n\nfor (const item of items) {\n  const job = item.json;\n  const sourceUrl = asText(pick(job, ['jobUrl', 'url', 'link', 'linkedinUrl', 'externalUrl', 'applyUrl']));\n  const title = asText(pick(job, ['title', 'jobTitle', 'position']));\n  const companyName = asText(pick(job, ['companyName', 'company', 'organization']));\n  const location = asText(pick(job, ['location', 'jobLocation', 'formattedLocation']));\n  const description = asText(pick(job, ['description', 'jobDescription', 'descriptionText', 'text']));\n  const employmentType = asText(pick(job, ['employmentType', 'jobType', 'contractType']));\n  const postedAt = asText(pick(job, ['publishedAt', 'postedAt', 'listedAt', 'createdAt', 'date']));\n  const salary = asText(pick(job, ['salary', 'salaryInfo', 'compensation']));\n  const workplaceType = asText(pick(job, ['workplaceType', 'workType', 'remoteType']));\n  const seniority = asText(pick(job, ['seniorityLevel', 'seniority', 'experienceLevel']));\n  const applyType = asText(pick(job, ['applyType', 'applicationType']));\n  const companyUrl = asText(pick(job, ['companyUrl', 'companyLinkedinUrl', 'companyLinkedInUrl']));\n  const keyword = item.pairedItem ? $items('Build LinkedIn Apify Inputs')[item.pairedItem.item]?.json.keyword : '';\n  const uid = pick(job, ['id', 'jobId', 'urn', 'uid']) || sourceUrl || (companyName + '|' + title + '|' + location + '|' + postedAt);\n\n  const details = [\n    description,\n    salary ? 'Salary: ' + salary : '',\n    workplaceType ? 'Workplace type: ' + workplaceType : '',\n    seniority ? 'Seniority: ' + seniority : '',\n    applyType ? 'Apply type: ' + applyType : '',\n    companyUrl ? 'Company URL: ' + companyUrl : '',\n    keyword ? 'Matched keyword: ' + keyword : ''\n  ].filter(Boolean).join('\\\\n\\\\n');\n\n  rows.push({\n    json: {\n      external_id: stableId(uid),\n      source: 'Apify LinkedIn',\n      source_url: sourceUrl,\n      title,\n      company_name: companyName || 'LinkedIn Company',\n      location,\n      region: location || 'LinkedIn',\n      description: details,\n      employment_type: employmentType,\n      salary_min: null,\n      salary_max: null,\n      currency: '',\n      posted_at: postedAt || null,\n      discovered_at: new Date().toISOString(),\n      stage: 'Discovered',\n      category: 'LinkedIn Job',\n      skills: asText(pick(job, ['skills', 'jobSkills'])),\n      budget: salary,\n      matched_keyword: keyword,\n      workplace_type: workplaceType,\n      seniority,\n      apply_type: applyType,\n      company_url: companyUrl,\n      raw_payload: job\n    }\n  });\n}\n\nconst seen = new Set();\nreturn rows.filter((row) => {\n  const key = row.json.external_id;\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n});\n"
+      },
+      "id": "normalize-apify-linkedin",
+      "name": "Normalize Apify LinkedIn",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map((item) => ({\n  json: {\n    opportunity: item.json,\n    openaiBody: {\n      model: $env.OPENAI_SCORING_MODEL || 'gpt-5-mini',\n      input: [\n        { role: 'system', content: 'You evaluate LinkedIn job opportunities for Farshad, an advanced quantitative researcher and AI/ML engineer. Return strict JSON only.' },\n        { role: 'user', content: 'Evaluate this LinkedIn job opportunity. Favor quant developer, trading systems, algorithmic trading, options, derivatives, volatility, index options, execution engineering, market microstructure, market making, low-latency Python/C++, and financial infrastructure roles. Return JSON with score, priority, strengths, risks, suggested_positioning, next_action, and reasoning. Opportunity: ' + JSON.stringify(item.json) }\n      ],\n      text: { format: { type: 'json_schema', name: 'opportunity_score', schema: { type: 'object', additionalProperties: false, properties: { score: { type: 'number' }, priority: { type: 'string' }, strengths: { type: 'array', items: { type: 'string' } }, risks: { type: 'array', items: { type: 'string' } }, suggested_positioning: { type: 'string' }, next_action: { type: 'string' }, reasoning: { type: 'string' } }, required: ['score', 'priority', 'strengths', 'risks', 'suggested_positioning', 'next_action', 'reasoning'] } } }\n    }\n  }\n}));\n"
+      },
+      "id": "build-openai-linkedin-request",
+      "name": "Build OpenAI LinkedIn Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        140,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.openaiBody}}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "openai-score-linkedin",
+      "name": "OpenAI Score LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function findText(value) {\n  if (typeof value === 'string') return value;\n  if (Array.isArray(value)) {\n    for (const entry of value) {\n      const found = findText(entry);\n      if (found) return found;\n    }\n    return '';\n  }\n  if (value && typeof value === 'object') {\n    if (typeof value.output_text === 'string') return value.output_text;\n    if (typeof value.text === 'string') return value.text;\n    if (typeof value.content === 'string') return value.content;\n    for (const key of ['output', 'content', 'message']) {\n      const found = findText(value[key]);\n      if (found) return found;\n    }\n  }\n  return '';\n}\n\nreturn items.map((item) => {\n  const original = item.pairedItem ? $items('Build OpenAI LinkedIn Request')[item.pairedItem.item].json.opportunity : {};\n  const text = findText(item.json) || '{}';\n  let score = {};\n  try { score = typeof text === 'string' ? JSON.parse(text) : text; }\n  catch (error) { score = { score: 0, priority: 'Low', strengths: [], risks: ['OpenAI response could not be parsed'], suggested_positioning: '', next_action: 'Review manually', reasoning: error.message }; }\n  return { json: { ...original, score: score.score ?? 0, priority: score.priority || 'Low', strengths: Array.isArray(score.strengths) ? score.strengths.join('\\n') : String(score.strengths || ''), risks: Array.isArray(score.risks) ? score.risks.join('\\n') : String(score.risks || ''), positioning: score.suggested_positioning || '', next_action: score.next_action || '', reasoning: score.reasoning || '', stage: Number(score.score) >= 70 ? 'Evaluated' : 'Archived' } };\n});\n"
+      },
+      "id": "merge-linkedin-score",
+      "name": "Merge LinkedIn Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Opportunities",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "append-linkedin-results-google-sheet",
+      "name": "Append LinkedIn Results to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        980,
+        -100
+      ],
+      "notes": "Use the same Opportunity Intelligence Ledger and Opportunities tab."
+    },
+    {
+      "parameters": {
+        "resource": "deal",
+        "operation": "create",
+        "dealName": "={{$json.title + ' - ' + ($json.company_name || 'LinkedIn')}}",
+        "stage": "={{$json.score >= 80 ? 'High Priority' : $json.score >= 70 ? 'Evaluated' : 'Discovered'}}",
+        "accountName": "={{$json.company_name || 'LinkedIn Company'}}",
+        "additionalFields": {
+          "description": "={{'Score: ' + $json.score + '\nPriority: ' + $json.priority + '\n\nSource: ' + $json.source_url + '\nMatched keyword: ' + ($json.matched_keyword || '') + '\n\nPositioning:\n' + $json.positioning + '\n\nStrengths:\n' + $json.strengths + '\n\nRisks:\n' + $json.risks + '\n\nNext action:\n' + $json.next_action + '\n\nReasoning:\n' + $json.reasoning}}"
+        }
+      },
+      "id": "create-zoho-deal-linkedin",
+      "name": "Create Zoho Deal LinkedIn",
+      "type": "n8n-nodes-base.zohoCrm",
+      "typeVersion": 1,
+      "position": [
+        980,
+        120
+      ],
+      "notes": "Connect your Zoho CRM credential. This creates Deals for every LinkedIn lead; no score filter is applied yet."
+    },
+    {
+      "parameters": {
+        "content": "Apify LinkedIn MVP:\n1. Build one small actor run per keyword.\n2. Normalize LinkedIn job fields into the common opportunity object.\n3. Score with OpenAI.\n4. Append to Google Sheets.\n5. Create Zoho Deals for all LinkedIn leads, no score filter yet.",
+        "height": 240,
+        "width": 470
+      },
+      "id": "sticky-note",
+      "name": "Workflow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -980,
+        -340
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Test Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build LinkedIn Apify Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build LinkedIn Apify Inputs": {
+      "main": [
+        [
+          {
+            "node": "Run Apify LinkedIn Actor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Apify LinkedIn Actor": {
+      "main": [
+        [
+          {
+            "node": "Normalize Apify LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Apify LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Build OpenAI LinkedIn Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OpenAI LinkedIn Request": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Score LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Score LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Merge LinkedIn Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge LinkedIn Score": {
+      "main": [
+        [
+          {
+            "node": "Append LinkedIn Results to Google Sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Zoho Deal LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-05-21T00:00:00.000Z",
+  "versionId": "1"
+}

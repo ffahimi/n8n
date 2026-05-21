@@ -63,6 +63,12 @@ For the Apify Upwork test, import:
 workflows/apify-upwork-intelligence-v1.json
 ```
 
+For the Apify LinkedIn jobs test, import:
+
+```text
+workflows/apify-linkedin-jobs-intelligence-v1.json
+```
+
 6. Create the required n8n credentials:
 
 - OpenAI API
