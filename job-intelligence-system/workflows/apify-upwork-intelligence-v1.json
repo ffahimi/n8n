@@ -181,10 +181,15 @@
         "resource": "deal",
         "operation": "create",
         "dealName": "={{$json.title + ' - Upwork'}}",
-        "stage": "={{$json.score >= 80 ? 'High Priority' : $json.score >= 70 ? 'Evaluated' : 'Discovered'}}",
+        "stage": "={{$json.score >= 80 ? 'Proposal/Price Quote' : $json.score >= 70 ? 'Qualification' : 'Needs Analysis'}}",
         "accountName": "={{$json.company_name || 'Upwork Client'}}",
         "additionalFields": {
-          "description": "={{'Score: ' + $json.score + '\nPriority: ' + $json.priority + '\n\nSource: ' + $json.source_url + '\n\nPositioning:\n' + $json.positioning + '\n\nStrengths:\n' + $json.strengths + '\n\nRisks:\n' + $json.risks + '\n\nNext action:\n' + $json.next_action + '\n\nReasoning:\n' + $json.reasoning}}"
+          "description": "={{'AI Score: ' + ($json.score || 0) + '\nPriority: ' + ($json.priority || '') + '\nSource: Apify Upwork' + '\nURL: ' + ($json.source_url || '') + '\nPosted at: ' + ($json.posted_at || '') + '\nDiscovered at: ' + ($json.discovered_at || '') + '\n\nTitle:\n' + ($json.title || '') + '\n\nDescription:\n' + ($json.description || '') + '\n\nPositioning:\n' + ($json.positioning || '') + '\n\nStrengths:\n' + ($json.strengths || '') + '\n\nRisks:\n' + ($json.risks || '') + '\n\nNext action:\n' + ($json.next_action || '') + '\n\nReasoning:\n' + ($json.reasoning || '')}}",
+          "closingDate": "={{new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}}",
+          "leadSource": "Web Research",
+          "nextStep": "={{String($json.next_action || 'Review opportunity').slice(0, 255)}}",
+          "probability": "={{Math.max(1, Math.min(99, Number($json.score || 0)))}}",
+          "type": "New Business"
         }
       },
       "id": "create-zoho-deal-apify-upwork",
