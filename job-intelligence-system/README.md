@@ -57,6 +57,12 @@ http://localhost:5678
 workflows/berlin-opportunity-intelligence-v1.json
 ```
 
+For the Apify Upwork test, import:
+
+```text
+workflows/apify-upwork-intelligence-v1.json
+```
+
 6. Create the required n8n credentials:
 
 - OpenAI API

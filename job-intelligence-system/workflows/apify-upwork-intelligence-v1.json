@@ -1,0 +1,205 @@
+{
+  "name": "Apify Upwork Intelligence v1",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Test Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      actorInput: {\n        'addons.enableClientActivity': false,\n        'addons.enableClientDetails': false,\n        'addons.enableJobAttachments': false,\n        'budget.allowUnspecifiedBudget': true,\n        'budget.fixedPrice.min': '50',\n        'budget.hourlyRate.min': '5',\n        'client.paymentMethodVerified': false,\n        'excludeKeywords.matchDescription': true,\n        'excludeKeywords.matchSkills': true,\n        'excludeKeywords.matchTitle': true,\n        'includeKeywords.keywords': [\n          'quant trading',\n          'betfair trading',\n          'python trading bot',\n          'sports betting model',\n          'algorithmic trading',\n          'prediction market',\n          'crypto trading bot',\n          'machine learning finance'\n        ],\n        'includeKeywords.matchDescription': true,\n        'includeKeywords.matchSkills': true,\n        'includeKeywords.matchTitle': true,\n        jobCategories: [\n          'AI & Machine Learning',\n          'All - Data Science & Analytics'\n        ],\n        limit: 10,\n        'notifications.limit': 1,\n        'notifications.shouldSendRunMetadata': false,\n        'vendor.excludeWithQuestions': false,\n        'vendor.includeFeatured': false,\n        'vendor.includeWithoutCountryPreference': true\n      }\n    }\n  }\n];\n"
+      },
+      "id": "build-apify-input",
+      "name": "Build Apify Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        0
+      ],
+      "notes": "Keep limit low while testing Apify cost and result quality."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/{{$env.APIFY_UPWORK_ACTOR_ID || 'upwork-vibe~upwork-job-scraper'}}/run-sync-get-dataset-items",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "token",
+              "value": "={{$env.APIFY_TOKEN}}"
+            },
+            {
+              "name": "timeout",
+              "value": "300"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.actorInput}}",
+        "options": {
+          "timeout": 360000
+        }
+      },
+      "id": "run-apify-upwork",
+      "name": "Run Apify Upwork Actor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -340,
+        0
+      ],
+      "notes": "Uses Apify synchronous run endpoint and returns dataset items directly."
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nfunction asText(value) {\n  if (value == null) return '';\n  if (Array.isArray(value)) return value.map(asText).filter(Boolean).join(', ');\n  if (typeof value === 'object') return JSON.stringify(value);\n  return String(value);\n}\n\nfunction pickBudget(job) {\n  const budget = job.budget || {};\n  if (typeof budget === 'string') return budget;\n  if (!budget || typeof budget !== 'object') return '';\n  return Object.entries(budget)\n    .map(([key, value]) => `${key}: ${asText(value)}`)\n    .join('; ');\n}\n\nconst rows = [];\n\nfor (const item of items) {\n  const job = item.json;\n  const sourceUrl = job.externalLink || job.url || job.link || '';\n  const uid = job.uid || sourceUrl || `${job.title || ''}|${job.publishedAt || job.createdAt || ''}`;\n  const externalId = crypto.createHash('sha256').update(String(uid)).digest('hex');\n  const budgetText = pickBudget(job);\n  const skillsText = asText(job.skills);\n  const clientText = asText(job.client);\n  const vendorText = asText(job.vendor);\n  const descriptionParts = [\n    job.description || '',\n    budgetText ? `Budget: ${budgetText}` : '',\n    skillsText ? `Skills: ${skillsText}` : '',\n    clientText ? `Client: ${clientText}` : '',\n    vendorText ? `Vendor: ${vendorText}` : '',\n    job.questions ? `Questions: ${asText(job.questions)}` : ''\n  ].filter(Boolean);\n\n  rows.push({\n    json: {\n      external_id: externalId,\n      source: 'Apify Upwork',\n      source_url: sourceUrl,\n      title: job.title || '',\n      company_name: 'Upwork Client',\n      location: 'Remote freelance',\n      region: 'Remote freelance',\n      description: descriptionParts.join('\\n\\n'),\n      employment_type: 'Freelance',\n      salary_min: null,\n      salary_max: null,\n      currency: '',\n      posted_at: job.publishedAt || job.createdAt || null,\n      discovered_at: new Date().toISOString(),\n      stage: 'Discovered',\n      application_cost: job.applicationCost ?? null,\n      custom_job_score: job.customJobScore ?? null,\n      category: job.category || '',\n      skills: skillsText,\n      budget: budgetText,\n      raw_payload: job\n    }\n  });\n}\n\nreturn rows;\n"
+      },
+      "id": "normalize-apify-upwork",
+      "name": "Normalize Apify Upwork",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{$env.OPENAI_SCORING_MODEL || 'gpt-5-mini'}}\",\n  \"input\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You evaluate Upwork freelance leads for Farshad, an advanced quantitative researcher and AI/ML engineer. Return strict JSON only.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Evaluate this Upwork opportunity. Favor projects involving prediction markets, Kalshi, Polymarket, sports betting, Betfair, trading automation, market microstructure, crypto trading, Python trading systems, time-series ML, reinforcement learning, low-latency systems, or financial machine learning. Penalize vague projects, low-budget clients, and projects asking for full production trading bots without controls. Return JSON with score, priority, strengths, risks, suggested_positioning, next_action, and reasoning. Opportunity: \" + JSON.stringify($json)\n    }\n  ],\n  \"text\": {\n    \"format\": {\n      \"type\": \"json_schema\",\n      \"name\": \"opportunity_score\",\n      \"schema\": {\n        \"type\": \"object\",\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"score\": { \"type\": \"number\" },\n          \"priority\": { \"type\": \"string\" },\n          \"strengths\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"risks\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"suggested_positioning\": { \"type\": \"string\" },\n          \"next_action\": { \"type\": \"string\" },\n          \"reasoning\": { \"type\": \"string\" }\n        },\n        \"required\": [\"score\", \"priority\", \"strengths\", \"risks\", \"suggested_positioning\", \"next_action\", \"reasoning\"]\n      }\n    }\n  }\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "openai-score-apify-upwork",
+      "name": "OpenAI Score Apify Upwork",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map((item) => {\n  const original = item.pairedItem ? $items('Normalize Apify Upwork')[item.pairedItem.item].json : {};\n  const response = item.json;\n  const text = response.output_text || response.output?.[0]?.content?.[0]?.text || '{}';\n  let score = {};\n\n  try {\n    score = typeof text === 'string' ? JSON.parse(text) : text;\n  } catch (error) {\n    score = {\n      score: 0,\n      priority: 'Low',\n      strengths: [],\n      risks: ['OpenAI response could not be parsed'],\n      suggested_positioning: '',\n      next_action: 'Review manually',\n      reasoning: error.message\n    };\n  }\n\n  return {\n    json: {\n      ...original,\n      score: score.score,\n      priority: score.priority,\n      strengths: Array.isArray(score.strengths) ? score.strengths.join('\\n') : String(score.strengths || ''),\n      risks: Array.isArray(score.risks) ? score.risks.join('\\n') : String(score.risks || ''),\n      positioning: score.suggested_positioning || '',\n      next_action: score.next_action || '',\n      reasoning: score.reasoning || '',\n      stage: Number(score.score) >= 70 ? 'Evaluated' : 'Archived'\n    }\n  };\n});\n"
+      },
+      "id": "merge-apify-score",
+      "name": "Merge Apify Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Apify Upwork MVP:\n1. Build a small, cost-capped actor input.\n2. Run the Upwork actor synchronously and return dataset items.\n3. Normalize Apify fields into the common opportunity object.\n4. Score with OpenAI.\n5. Inspect output, then later attach Google Sheets and Zoho.",
+        "height": 220,
+        "width": 460
+      },
+      "id": "sticky-note",
+      "name": "Workflow Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        -320
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Test Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Apify Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Apify Input": {
+      "main": [
+        [
+          {
+            "node": "Run Apify Upwork Actor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Apify Upwork Actor": {
+      "main": [
+        [
+          {
+            "node": "Normalize Apify Upwork",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Apify Upwork": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Score Apify Upwork",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Score Apify Upwork": {
+      "main": [
+        [
+          {
+            "node": "Merge Apify Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-05-21T00:00:00.000Z",
+  "versionId": "1"
+}
+
